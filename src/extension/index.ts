@@ -288,22 +288,31 @@ export default function webuiExtension(pi: ExtensionAPI) {
     if (!child) return;
     ownedChild = null;
     clearPid();
+    // Remove from the event loop so process.exit() isn't blocked by the
+    // child handle staying alive while the server shuts down.
+    child.unref();
     try {
       child.kill("SIGTERM");
     } catch {
       /* ignore */
     }
-    // Force kill if SIGTERM doesn't work (e.g. stubborn server)
+    // Aggressive force-kill after a short grace period
     setTimeout(() => {
-      try { child?.kill("SIGKILL"); } catch { /* ignore */ }
-    }, 3000).unref();
+      try {
+        child?.kill("SIGKILL");
+      } catch {
+        /* ignore */
+      }
+    }, 200).unref();
   };
 
   pi.on("session_shutdown", killOwned);
-  // Catch additional exit paths so the server doesn't outlive pi
+  // Catch additional exit paths so the server doesn't outlive pi.
+  // Must use process.exit() directly (not inside setImmediate) because the
+  // child handle may keep the loop alive and prevent setImmediate from firing.
   process.on("exit", killOwned);
-  process.on("SIGINT", () => { killOwned(); setImmediate(() => process.exit(2)); });
-  process.on("SIGTERM", () => { killOwned(); setImmediate(() => process.exit(15)); });
+  process.on("SIGINT", () => { killOwned(); process.exit(130); });
+  process.on("SIGTERM", () => { killOwned(); process.exit(143); });
 
   // Auto-start via environment variables:
   //   PI_WEBUI=1              start server on default port
