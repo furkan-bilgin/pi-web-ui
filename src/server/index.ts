@@ -1,6 +1,24 @@
 #!/usr/bin/env node
 // @ts-nocheck
 import { createServer } from "node:http";
+
+// Self-terminate when the parent process (pi) exits. This is more reliable
+// than relying on extension-level cleanup handlers, which may not fire in
+// all exit scenarios (e.g. SIGKILL, terminal close).
+(function monitorParentDeath() {
+  const ppid = process.ppid;
+  const timer = setInterval(() => {
+    try {
+      // Signal 0 checks for process existence without sending a signal.
+      process.kill(ppid, 0);
+    } catch {
+      // ESRCH — parent no longer exists; shut down.
+      clearInterval(timer);
+      process.exit(0);
+    }
+  }, 5000);
+  timer.unref();
+})();
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { extname, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -698,6 +716,8 @@ function serializeSessionInfo(info) {
 }
 
 class NativePiSessionController {
+  /** Serialization queue for incoming WebSocket messages. */
+  private handleQueue = Promise.resolve();
   constructor(ws, registry, { skipInit = false } = {}) {
     this.ws = ws;
     this.registry = registry;
@@ -1138,6 +1158,17 @@ class NativePiSessionController {
   }
 
   async handle(payload) {
+    // Serialise concurrent prompts/commands so they don't race on
+    // shared session state. Each call awaits the previous one.
+    this.handleQueue = this.handleQueue.then(() =>
+      this._handle(payload).catch((error) => {
+        logger.error("_handle error", { error: error instanceof Error ? error.message : String(error) });
+      })
+    );
+    return this.handleQueue;
+  }
+
+  async _handle(payload) {
     await this.ready;
 
     // Handle ping/pong for connection keepalive
@@ -1392,7 +1423,7 @@ class NativePiSessionController {
    * created by a previous WebSocket). Replays missed events and sends the
    * connected/bootstrap messages.
    */
-  attachToSlot(slot, sessionFile, lastSeq) {
+  async attachToSlot(slot, sessionFile, lastSeq) {
     this.runtime = slot.runtime;
     this.sessionFile = sessionFile;
     slot.connections.add(this.ws);
@@ -1433,7 +1464,7 @@ class NativePiSessionController {
     // calls (sendState, sendMessages) get interleaved with bootstrap
     // messages, corrupting the client state.
     logger.info("full bootstrap on reuse", { lastSeq });
-    this.sendBootstrap();
+    await this.sendBootstrap();
 
     // Subscribe to live session events NOW — after bootstrap is settled.
     this.unsubscribe = session?.subscribe?.((event) => {

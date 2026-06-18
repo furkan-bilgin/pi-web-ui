@@ -25,7 +25,6 @@ export interface SessionSlot {
 export class ConnectionRegistry {
   private slots = new Map<string, SessionSlot>();
   private fileToId = new Map<string, string>(); // sessionFile → sessionId
-  private disposals = new Map<string, Promise<void>>();
 
   /** Register a new session runtime and create its slot. */
   register(sessionId: string, runtime: SessionSlot["runtime"]): SessionSlot {
@@ -68,18 +67,6 @@ export class ConnectionRegistry {
       slot.keepaliveTimer = setTimeout(() => {
         this.dispose(sessionId);
       }, SESSION_KEEPALIVE_MS);
-    }
-  }
-
-  /** Broadcast an event to all connections for a session. */
-  broadcast(sessionId: string, event: Record<string, unknown>): void {
-    const slot = this.slots.get(sessionId);
-    if (!slot) return;
-    const payload = JSON.stringify(event);
-    for (const ws of slot.connections) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(payload);
-      }
     }
   }
 

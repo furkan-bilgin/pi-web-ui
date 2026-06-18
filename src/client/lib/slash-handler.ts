@@ -166,3 +166,15 @@ export function resolvePicker(value: string): void {
     cb(value);
   }
 }
+
+/**
+ * Called when the picker modal is dismissed without a selection.
+ * Prevents stale callbacks from leaking.
+ */
+export function rejectPicker(): void {
+  if (pendingPicker) {
+    const cb = pendingPicker;
+    pendingPicker = null;
+    cb(""); // empty string signals cancellation
+  }
+}

@@ -70,11 +70,15 @@ export function Composer({ onSend, onAbort }: ComposerProps) {
   const isRunning = useChatStore((s) => s.isRunning);
 
   // ── Image paste / drag-drop (matches pi-web-ui-old approach) ──
+  // Keep a ref to avoid stale closure in the paste/drag handlers.
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
 
   const addImages = useCallback(async (files: FileList | File[]) => {
     const arr = Array.from(files);
     for (const file of arr) {
-      if (images.length >= MAX_IMAGES) {
+      const currentCount = imagesRef.current.length;
+      if (currentCount >= MAX_IMAGES) {
         showError(`Maximum ${MAX_IMAGES} images per message.`);
         break;
       }

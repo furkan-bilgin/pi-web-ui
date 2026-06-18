@@ -1,6 +1,6 @@
 import { useSessionStore } from "../stores/session-store";
 import { useChatStore } from "../stores/chat-store";
-import { useConnectionStore } from "../stores/connection-store";
+import { useConnection } from "../lib/connection-provider";
 
 function displayPath(path: string, homeDir: string): string {
   if (!path || !homeDir) return path || "";
@@ -13,7 +13,7 @@ export function StatusBar() {
   const sessionState = useSessionStore((s) => s.sessionState);
   const homeDir = useSessionStore((s) => s.homeDir);
   const lastError = useChatStore((s) => s.lastError);
-  const connectionStatus = useConnectionStore((s) => s.status);
+  const { status: connectionStatus } = useConnection();
 
   if (!sessionState) {
     return (

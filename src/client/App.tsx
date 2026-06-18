@@ -8,7 +8,7 @@ import { Modal } from "./components/Modal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toaster } from "./components/ui/sonner";
 import { ConnectionProvider, useConnection } from "./lib/connection-provider";
-import { resolvePicker, setGlobalSend } from "./lib/slash-handler";
+import { resolvePicker, rejectPicker, setGlobalSend } from "./lib/slash-handler";
 import { dispatchPacket } from "./lib/dispatch";
 import { useSessionStore } from "./stores/session-store";
 import { routeInput } from "./lib/route-input";
@@ -147,6 +147,7 @@ function AppInner() {
             setPickerModal(null);
           }}
           onClose={() => {
+            rejectPicker();
             setPickerModal(null);
           }}
         />

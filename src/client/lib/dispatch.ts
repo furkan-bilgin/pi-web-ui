@@ -2,7 +2,6 @@
  * Message dispatch — routes server-pushed messages to Zustand stores.
  */
 
-import { useConnectionStore } from "../stores/connection-store";
 import { useSessionStore } from "../stores/session-store";
 import { useChatStore } from "../stores/chat-store";
 import { handleSlashResult } from "./slash-handler";

@@ -53,64 +53,6 @@ export function findMatchingToolCall(
  * assistant message's tool_call blocks. Returns the merged blocks for the
  * assistant message and a set of canonical indices to skip.
  */
-export function mergeCanonicalItems(
-  items: RenderItem[],
-): { mergedBlocks: Map<number, Block[]>; skipIndices: Set<number> } {
-  const mergedBlocks = new Map<number, Block[]>();
-  const skipIndices = new Set<number>();
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.source !== "canonical") continue;
-    if (item.message.role !== "assistant") continue;
-
-    const blocks = parseMessageBlocks(item.message);
-    const toolCalls = blocks.filter((b) => b.type === "tool_call");
-    if (toolCalls.length === 0) continue;
-
-    // Look ahead for tool result messages
-    const toolResults: { block: Block; idx: number }[] = [];
-    let j = i + 1;
-    while (j < items.length && items[j].source === "canonical") {
-      const next = items[j];
-      if (next.message.role !== "toolResult" && next.message.role !== "tool") break;
-      const nextBlocks = parseMessageBlocks(next.message);
-      const tr = nextBlocks.find((b) => b.type === "tool_result");
-      if (!tr) break;
-      toolResults.push({ block: tr, idx: j });
-      j++;
-    }
-
-    if (toolResults.length === 0) continue;
-
-    // Merge: replace tool_call + tool_result pairs with tool_combined
-    const count = Math.min(toolCalls.length, toolResults.length);
-    const merged = blocks.slice(); // copy
-    for (let k = 0; k < count; k++) {
-      const tcIdx = merged.indexOf(toolCalls[k]);
-      if (tcIdx >= 0) {
-        merged[tcIdx] = {
-          type: "tool_combined" as const,
-          name: toolCalls[k].name,
-          input: (toolCalls[k] as Block & { type: "tool_call" }).input,
-          result: (toolResults[k].block as Block & { type: "tool_result" }).result,
-        };
-        // Remove the old tool_call that was at the next position (it's been merged)
-        // Actually, tool_calls were at their original positions. The tool_combined
-        // replaces the tool_call, and the tool_result blocks in the next message
-        // are skipped entirely.
-      }
-    }
-
-    mergedBlocks.set(i, merged);
-    for (const tr of toolResults) {
-      skipIndices.add(tr.idx);
-    }
-  }
-
-  return { mergedBlocks, skipIndices };
-}
-
 /** Single source of truth for parsing a Message into Block[]. */
 export function parseMessageBlocks(msg: Message): Block[] {
   // Tool result messages use role="toolResult" with content as the result

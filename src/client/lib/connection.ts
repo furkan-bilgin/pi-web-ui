@@ -163,6 +163,14 @@ export class ConnectionManager {
         this.send({ type: "pong" });
         return; // Don't forward ping to handler
       }
+      case "pong": {
+        // Clear the pong timeout — the server is alive.
+        if (this.pongTimer) {
+          clearTimeout(this.pongTimer);
+          this.pongTimer = null;
+        }
+        return; // Don't forward pong to handler
+      }
       case "session_event": {
         if (typeof packet.seq === "number") {
           this._lastSeq = packet.seq as number;
