@@ -745,6 +745,7 @@ class NativePiSessionController {
         diagnostics: this.runtime.diagnostics,
         slashCommands: this.collectSlashCommands(),
         basePath: BASE_PATH || undefined,
+        projectCwd: this.cwd,
       },
     });
     // Bootstrap is now driven by the client's `ready` message — they tell us
@@ -1085,15 +1086,26 @@ class NativePiSessionController {
   // fresh bootstrap.
   async handleReady(lastSeq, sessionFile) {
     if (sessionFile && sessionFile !== (this.session.sessionFile || null)) {
-      try {
-        logger.info("client requested session", { sessionFile });
-        const switched = await this.runtime.switchSession(sessionFile);
-        if (!switched?.cancelled) await this.bindSession();
-      } catch (error) {
-        logger.warn("client requested session unavailable", {
+      // Validate that the session belongs to the current project CWD to
+      // prevent cross-project session leakage via localStorage.
+      const cwdSlug = `--${this.cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+      if (!sessionFile.includes(cwdSlug)) {
+        logger.warn("ignoring sessionFile from different project CWD", {
           sessionFile,
-          error: error instanceof Error ? error.message : String(error),
+          appCwd: this.cwd,
+          expectedSlug: cwdSlug,
         });
+      } else {
+        try {
+          logger.info("client requested session", { sessionFile });
+          const switched = await this.runtime.switchSession(sessionFile);
+          if (!switched?.cancelled) await this.bindSession();
+        } catch (error) {
+          logger.warn("client requested session unavailable", {
+            sessionFile,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
     const result = this.eventLog.eventsAfter(lastSeq);
@@ -1399,6 +1411,7 @@ class NativePiSessionController {
         diagnostics: this.runtime.diagnostics || [],
         slashCommands: this.collectSlashCommands(),
         basePath: BASE_PATH || undefined,
+        projectCwd: this.cwd,
       },
     });
 

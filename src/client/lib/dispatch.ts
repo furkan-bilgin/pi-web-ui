@@ -20,11 +20,24 @@ export function dispatchPacket(packet: {
         appCwd?: string;
         homeDir?: string;
         slashCommands?: SlashCommand[];
+        projectCwd?: string;
       };
       const sessionStore = useSessionStore.getState();
       if (p?.appCwd) sessionStore.setAppCwd(p.appCwd);
       if (p?.homeDir) sessionStore.setHomeDir(p.homeDir);
       if (p?.slashCommands) sessionStore.setSlashCommands(p.slashCommands);
+
+      // Validate stored session file against the server's project CWD
+      // to prevent cross-project leakage from localStorage.
+      if (p?.projectCwd) {
+        const stored = localStorage.getItem("pi-web-ui:session-file");
+        if (stored) {
+          const expectedSlug = `--${p.projectCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
+          if (!stored.includes(expectedSlug)) {
+            localStorage.removeItem("pi-web-ui:session-file");
+          }
+        }
+      }
       break;
     }
 
