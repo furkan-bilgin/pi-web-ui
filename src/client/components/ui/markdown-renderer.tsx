@@ -1,19 +1,19 @@
 import React, { Suspense } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import remarkMath from "remark-math"
+import remarkMath from "remark-math-extended"
 import rehypeKatex from "rehype-katex"
 
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/copy-button"
-import { preprocessMath } from "@/lib/math-preprocessor"
+import { stripDollarInBlocks } from "@/lib/math-preprocessor"
 
 interface MarkdownRendererProps {
   children: string
 }
 
 export function MarkdownRenderer({ children }: MarkdownRendererProps) {
-  const processed = preprocessMath(children ?? "");
+  const processed = stripDollarInBlocks(children ?? "");
   return (
     <div className="space-y-3">
       <Markdown

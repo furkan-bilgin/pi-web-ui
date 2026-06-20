@@ -1,7 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
-import remarkMath from "remark-math";
+import remarkMath from "remark-math-extended";
 import remarkGfm from "remark-gfm";
+import { stripDollarInBlocks } from "../lib/math-preprocessor";
 
 function CodeBlock({
   className,
@@ -46,6 +47,7 @@ function CodeBlock({
 }
 
 export function MarkdownBlock({ text }: { text: string }) {
+  const processed = stripDollarInBlocks(text ?? "");
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none">
       <ReactMarkdown
@@ -73,7 +75,7 @@ export function MarkdownBlock({ text }: { text: string }) {
           ),
         }}
       >
-        {text}
+        {processed}
       </ReactMarkdown>
     </div>
   );
