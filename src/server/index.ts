@@ -296,33 +296,56 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const modelRegistry = services.modelRegistry;
   const defaultModelId = settingsManager.getDefaultModel();
   const defaultProvider = settingsManager.getDefaultProvider();
+  const allModels: any[] = (modelRegistry as any).models || [];
+  const availModels = Array.isArray(modelRegistry.getAvailable())
+    ? modelRegistry.getAvailable()
+    : await modelRegistry.getAvailable();
+  const minimaxModels = allModels
+    .filter((m: any) => (m.id || "").toLowerCase().includes("minimax") || (m.provider || "").toLowerCase().includes("minimax"))
+    .map((m: any) => `${m.provider}/${m.id}`);
+  const kimiModels = allModels
+    .filter((m: any) => (m.id || "").toLowerCase().includes("kimi"))
+    .map((m: any) => `${m.provider}/${m.id}`);
+  logger.info("model-resolve", {
+    defaultProvider,
+    defaultModelId,
+    scopedCount: scopedModels.length,
+    allCount: allModels.length,
+    availCount: availModels.length,
+    minimaxModels,
+    kimiModels,
+  });
+
   let model;
 
   // 1. Try exact provider+model match
   if (defaultProvider && defaultModelId) {
     model = modelRegistry.find(defaultProvider, defaultModelId);
+    if (model) logger.info("model-resolve step1 exact", { model: `${model.provider}/${model.id}` });
   }
 
-  // 2. Search ALL registered models (not just available-with-auth ones) by ID
-  //    using the internal models array.  This handles cases where the default
-  //    model is registered under a different provider (e.g. fireworks/...) or
-  //    where the provider is missing from the user's settings.
+  // 2. Search ALL registered models by ID (handles cross-provider matches)
   if (!model && defaultModelId) {
-    const allModels: any[] = (modelRegistry as any).models || [];
-    model = allModels.find((m) => m.id === defaultModelId)
-      || allModels.find((m) => m.id.endsWith("/" + defaultModelId));
+    const dm = defaultModelId;
+    model = allModels.find((m) => m.id === dm)
+      || allModels.find((m) => m.id.endsWith("/" + dm))
+      || allModels.find((m) => {
+        const mId = m.id || "";
+        // Strip everything up to the last / or space to compare bare model name
+        const bare = mId.includes("/") ? mId.split("/").pop()! : mId;
+        return bare === dm || mId === dm;
+      });
+    if (model) logger.info("model-resolve step2 all-models", { model: `${model.provider}/${model.id}` });
   }
 
-  // 3. If found a model but it lacks auth, prefer one with auth from available list
+  // 3. Prefer auth-configured instance
   if (model) {
-    const avail = Array.isArray(modelRegistry.getAvailable())
-      ? modelRegistry.getAvailable()
-      : await modelRegistry.getAvailable();
-    const withAuth = avail.find((m) => m.provider === model.provider && m.id === model.id);
+    const withAuth = availModels.find((m) => m.provider === model.provider && m.id === model.id);
     if (withAuth) model = withAuth;
+    logger.info("model-resolve step3 final", { model: `${model.provider}/${model.id}`, hasAuth: !!withAuth });
   }
 
-  // 4. Fall back to scoped models (mirrors pi CLI's buildSessionOptions)
+  // 4. Fall back to scoped models
   if (!model && scopedModels.length > 0) {
     if (defaultModelId) {
       model = scopedModels.find(
@@ -330,6 +353,11 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
       )?.model;
     }
     if (!model) model = scopedModels[0].model;
+    logger.info("model-resolve step4 scoped", { model: model ? `${model.provider}/${model.id}` : null });
+  }
+
+  if (!model) {
+    logger.info("model-resolve step5 no-model-falling-to-sdk");
   }
 
   // Apply tool restrictions from env vars
