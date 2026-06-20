@@ -6,6 +6,13 @@ import { createServer } from "node:http";
 // than relying on extension-level cleanup handlers, which may not fire in
 // all exit scenarios (e.g. SIGKILL, terminal close).
 (function monitorParentDeath() {
+  // When the server shares a process group with pi (detached=false), Ctrl+C
+  // sends SIGINT to the entire group.  Exit immediately rather than waiting
+  // for the 5-second parent-death poll.
+  process.on("SIGINT", () => process.exit(130));
+  process.on("SIGTERM", () => process.exit(143));
+  process.on("SIGHUP", () => process.exit(129));
+
   const ppid = process.ppid;
   const timer = setInterval(() => {
     try {
