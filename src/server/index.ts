@@ -295,37 +295,26 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
   });
   const scopedModels = resolveScopedModelsFromSettings(services);
 
-  // Respect the user's defaultModel from settings.json.
-  // If defaultProvider/defaultModelId are set, search all available models
-  // (matching by ID across any provider) so the Web UI doesn't silently
-  // fall back to the first scoped or first-available model.
+  // Resolve the default model from settings so the Web UI picks up the
+  // user's `defaultModel` (or `defaultProvider`/`defaultModelId`) from
+  // settings.json instead of always using the first available model.
+  // This mirrors what the pi CLI does in buildSessionOptions().
   const settingsManager = services.settingsManager;
   const modelRegistry = services.modelRegistry;
-  const defaultModelId = settingsManager.getDefaultModel();
   const defaultProvider = settingsManager.getDefaultProvider();
+  const defaultModelId = settingsManager.getDefaultModel();
   let model;
   if (defaultProvider && defaultModelId) {
     model = modelRegistry.find(defaultProvider, defaultModelId);
   }
-  // If not found by exact provider+id, search across all models by ID
-  // (handles cases where defaultProvider is unset or the model ID pattern
-  // differs from the provider-registered name).
-  if (!model && defaultModelId) {
-    const all = Array.isArray(modelRegistry.getAvailable())
-      ? modelRegistry.getAvailable()
-      : await modelRegistry.getAvailable();
-    model = all.find((m) => m.id === defaultModelId);
-  }
+  // If the default model is in scoped models, use it; otherwise use the
+  // first scoped model (if any).  If neither resolves, the SDK falls back
+  // to findInitialModel which tries all available models.
   if (!model && scopedModels.length > 0) {
-    // Try to find the default model inside scoped models
-    if (defaultModelId) {
-      model = scopedModels.find(
-        (sm) => sm.model.id === defaultModelId
-      )?.model;
-    }
-    if (!model) {
-      model = scopedModels[0].model;
-    }
+    const saved = defaultProvider && defaultModelId
+      ? scopedModels.find((sm) => sm.model.provider === defaultProvider && sm.model.id === defaultModelId)
+      : undefined;
+    model = saved?.model ?? scopedModels[0].model;
   }
 
   // Apply tool restrictions from env vars
