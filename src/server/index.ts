@@ -296,9 +296,11 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const modelRegistry = services.modelRegistry;
   const defaultModelId = settingsManager.getDefaultModel();
   const defaultProvider = settingsManager.getDefaultProvider();
+  process.stderr.write(`[pi-web-ui] [model] defaultProvider=${defaultProvider} defaultModelId=${defaultModelId}\n`);
   let model;
   if (defaultProvider && defaultModelId) {
     model = modelRegistry.find(defaultProvider, defaultModelId);
+    process.stderr.write(`[pi-web-ui] [model] exact match: ${!!model} model=${model ? model.provider + '/' + model.id : 'null'}\n`);
   }
   // If not found by exact provider+id, search across all models by ID
   // (handles cases where defaultProvider is unset or the model ID pattern
@@ -320,6 +322,7 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
       model = scopedModels[0].model;
     }
   }
+  process.stderr.write(`[pi-web-ui] [model] final=${model ? model.provider + '/' + model.id : 'null'}\n`);
 
   // Apply tool restrictions from env vars
   const toolOpts = {};
