@@ -294,29 +294,6 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
     resourceLoaderOptions: noExtensions ? { noExtensions: true } : undefined,
   });
   const scopedModels = resolveScopedModelsFromSettings(services);
-
-  // Resolve the default model from settings so the Web UI picks up the
-  // user's `defaultModel` (or `defaultProvider`/`defaultModelId`) from
-  // settings.json instead of always using the first available model.
-  // This mirrors what the pi CLI does in buildSessionOptions().
-  const settingsManager = services.settingsManager;
-  const modelRegistry = services.modelRegistry;
-  const defaultProvider = settingsManager.getDefaultProvider();
-  const defaultModelId = settingsManager.getDefaultModel();
-  let model;
-  if (defaultProvider && defaultModelId) {
-    model = modelRegistry.find(defaultProvider, defaultModelId);
-  }
-  // If the default model is in scoped models, use it; otherwise use the
-  // first scoped model (if any).  If neither resolves, the SDK falls back
-  // to findInitialModel which tries all available models.
-  if (!model && scopedModels.length > 0) {
-    const saved = defaultProvider && defaultModelId
-      ? scopedModels.find((sm) => sm.model.provider === defaultProvider && sm.model.id === defaultModelId)
-      : undefined;
-    model = saved?.model ?? scopedModels[0].model;
-  }
-
   // Apply tool restrictions from env vars
   const toolOpts = {};
   if (NO_TOOLS) toolOpts.noTools = true;
@@ -328,7 +305,6 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
       sessionManager,
       sessionStartEvent,
       scopedModels,
-      model,
       ...toolOpts,
     })),
     services,
