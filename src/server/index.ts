@@ -371,6 +371,27 @@ function serveStatic(req, res) {
     }
   }
 
+  // CSS files behind a base path need their url(/assets/...) references
+  // rewritten to include the base path, otherwise @font-face src URLs
+  // and other absolute asset paths resolve against the origin root instead
+  // of the app's subpath.
+  if (BASE_PATH && pathname.endsWith(".css")) {
+    for (const root of STATIC_ROOTS) {
+      const filePath = resolve(join(root, pathname));
+      if (filePath.startsWith(root) && existsSync(filePath)) {
+        const css = readFileSync(filePath, "utf8")
+          .replace(/url\(\/assets\//g, `url(${BASE_PATH}/assets/`);
+        const ext = extname(pathname).toLowerCase();
+        res.writeHead(200, {
+          "content-type": mimeTypes[ext] || "text/css; charset=utf-8",
+          "cache-control": "public, max-age=31536000, immutable",
+        });
+        res.end(css);
+        return;
+      }
+    }
+  }
+
   // Try each static root in order (clientDist first, then public for legacy)
   for (const root of STATIC_ROOTS) {
     const filePath = resolve(join(root, pathname));
