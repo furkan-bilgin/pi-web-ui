@@ -303,41 +303,33 @@ const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
   const modelRegistry = services.modelRegistry;
   const defaultModelId = settingsManager.getDefaultModel();
   const defaultProvider = settingsManager.getDefaultProvider();
+  process.stderr.write(`[pi-web-ui] [model] defaultProvider=${defaultProvider} defaultModelId=${defaultModelId}\n`);
   let model;
-
-  // 1. Try exact provider+model match
   if (defaultProvider && defaultModelId) {
     model = modelRegistry.find(defaultProvider, defaultModelId);
+    process.stderr.write(`[pi-web-ui] [model] exact match: ${!!model} model=${model ? model.provider + '/' + model.id : 'null'}\n`);
   }
-
-  // 2. Search ALL registered models (not just available-with-auth ones) by ID
-  //    using the internal models array.  This handles cases where the default
-  //    model is registered under a different provider (e.g. fireworks/...) or
-  //    where the provider is missing from the user's settings.
+  // If not found by exact provider+id, search across all models by ID
+  // (handles cases where defaultProvider is unset or the model ID pattern
+  // differs from the provider-registered name).
   if (!model && defaultModelId) {
-    const allModels: any[] = (modelRegistry as any).models || [];
-    model = allModels.find((m) => m.id === defaultModelId)
-      || allModels.find((m) => m.id.endsWith("/" + defaultModelId));
-  }
-
-  // 3. If found a model but it lacks auth, prefer one with auth from available list
-  if (model) {
-    const avail = Array.isArray(modelRegistry.getAvailable())
+    const all = Array.isArray(modelRegistry.getAvailable())
       ? modelRegistry.getAvailable()
       : await modelRegistry.getAvailable();
-    const withAuth = avail.find((m) => m.provider === model.provider && m.id === model.id);
-    if (withAuth) model = withAuth;
+    model = all.find((m) => m.id === defaultModelId);
   }
-
-  // 4. Fall back to scoped models (mirrors pi CLI's buildSessionOptions)
   if (!model && scopedModels.length > 0) {
+    // Try to find the default model inside scoped models
     if (defaultModelId) {
       model = scopedModels.find(
-        (sm) => sm.model.id === defaultModelId || sm.model.id.endsWith("/" + defaultModelId)
+        (sm) => sm.model.id === defaultModelId
       )?.model;
     }
-    if (!model) model = scopedModels[0].model;
+    if (!model) {
+      model = scopedModels[0].model;
+    }
   }
+  process.stderr.write(`[pi-web-ui] [model] final=${model ? model.provider + '/' + model.id : 'null'}\n`);
 
   // Apply tool restrictions from env vars
   const toolOpts = {};

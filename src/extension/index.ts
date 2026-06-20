@@ -171,7 +171,7 @@ function runStart(_ctx: ExtensionCommandContext, opts: StartOptions = {}) {
       cwd: homedir(),
       env: {
         ...process.env,
-        PI_PROJECT_CWD: getProjectCwd(),
+        PI_PROJECT_CWD: PI_CWD,
       },
       detached,
       stdio: ["ignore", logFd, logFd],
@@ -261,12 +261,9 @@ async function pickAndRun(ctx: ExtensionCommandContext) {
   if (sub) dispatch(sub.name, ctx);
 }
 
+// Capture pi's CWD at extension load time (before pi might change to tmp dir).
 // The server uses this to scope sessions to the directory where pi was launched.
-// Evaluated lazily (in setImmediate / runStart) so pi's CWD has settled to the
-// real project directory, not the extension tmp clone dir.
-function getProjectCwd(): string {
-  return process.env.PWD || process.cwd();
-}
+const PI_CWD = process.cwd();
 
 export default function webuiExtension(pi: ExtensionAPI) {
   pi.registerCommand("webui", {
