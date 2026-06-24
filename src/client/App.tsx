@@ -42,7 +42,7 @@ function AppInner() {
     return () => window.removeEventListener("pi:show-picker", handler);
   }, []);
 
-  // Page title follows session name
+  // Page title
   const sessionState = useSessionStore((s) => s.sessionState);
   useEffect(() => {
     const name = sessionState?.sessionName;
@@ -56,14 +56,15 @@ function AppInner() {
     });
   }, [setHandler]);
 
-  // Listen for URL hash changes (browser back/forward navigation)
+  // Listen for URL hash changes (browser back/forward navigation).
+  // Hash format: #s-{sessionId} — only the session UUID is exposed.
   useEffect(() => {
     const onHashChange = () => {
-      const hash = location.hash.startsWith("#")
-        ? decodeURIComponent(location.hash.slice(1))
+      const hash = location.hash.startsWith("#s-")
+        ? decodeURIComponent(location.hash.slice(3))
         : null;
       if (hash) {
-        send({ type: "switch_session", sessionPath: hash });
+        send({ type: "switch_session", sessionId: hash });
       }
     };
     window.addEventListener("hashchange", onHashChange);
@@ -105,19 +106,22 @@ function AppInner() {
   }, [send]);
 
   const handleSwitchSession = useCallback(
-    (path: string) => {
+    (sessionId: string) => {
       // Optimistic: reset chat and show loading
       useChatStore.getState().setSwitching(true);
       useChatStore.getState().resetHistory();
-      send({ type: "switch_session", sessionPath: path });
+      send({ type: "switch_session", sessionId });
     },
     [send]
   );
 
   const handleDeleteSession = useCallback(
-    (path: string, name: string) => {
-      if (confirm(`Delete session "${name.replace(/"/g, '\\"')}"?`)) {
-        send({ type: "delete_session", sessionPath: path });
+    (sessionId: string) => {
+      const sessions = useSessionStore.getState().sessions;
+      const session = sessions.find((s) => s.id === sessionId);
+      const label = session?.name || sessionId.slice(-12);
+      if (confirm(`Delete session ${label}?`)) {
+        send({ type: "delete_session", sessionId });
       }
     },
     [send]

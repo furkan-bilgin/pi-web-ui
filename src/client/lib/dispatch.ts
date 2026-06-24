@@ -19,23 +19,19 @@ export function dispatchPacket(packet: {
         appCwd?: string;
         homeDir?: string;
         slashCommands?: SlashCommand[];
-        projectCwd?: string;
       };
       const sessionStore = useSessionStore.getState();
       if (p?.appCwd) sessionStore.setAppCwd(p.appCwd);
       if (p?.homeDir) sessionStore.setHomeDir(p.homeDir);
       if (p?.slashCommands) sessionStore.setSlashCommands(p.slashCommands);
 
-      // Validate stored session file against the server's project CWD
-      // to prevent cross-project leakage from localStorage.
-      if (p?.projectCwd) {
-        const stored = localStorage.getItem("pi-web-ui:session-file");
-        if (stored) {
-          const expectedSlug = `--${p.projectCwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-          if (!stored.includes(expectedSlug)) {
-            localStorage.removeItem("pi-web-ui:session-file");
-          }
+      // Clean up legacy localStorage keys that stored filesystem paths
+      try {
+        if (localStorage.getItem("pi-web-ui:session-file")) {
+          localStorage.removeItem("pi-web-ui:session-file");
         }
+      } catch {
+        // storage unavailable
       }
       break;
     }
@@ -44,15 +40,16 @@ export function dispatchPacket(packet: {
       const state = packet.payload as SessionState;
       if (state) {
         useSessionStore.getState().setSessionState(state);
-        // Update URL hash for shareable session links
-        if (state.sessionFile) {
-          const hash = `#${encodeURIComponent(state.sessionFile)}`;
+        // Update URL hash for shareable session links using session ID only.
+        // No filesystem paths are exposed to the client.
+        if (state.sessionId) {
+          const hash = `#s-${encodeURIComponent(state.sessionId)}`;
           if (location.hash !== hash) {
             history.replaceState(null, "", hash);
           }
-          // Persist to localStorage as fallback
+          // Persist session ID to localStorage as fallback
           try {
-            localStorage.setItem("pi-web-ui:session-file", state.sessionFile);
+            localStorage.setItem("pi-web-ui:session-id", state.sessionId);
           } catch {
             // storage unavailable
           }

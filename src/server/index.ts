@@ -689,25 +689,25 @@ const SLASH_HANDLERS = {
     };
   },
   resume: async (ctrl, arg) => {
-    const path = String(arg || "").trim();
-    if (path) {
-      const result = await ctrl.runtime.switchSession(path);
+    const sessionId = String(arg || "").trim();
+    if (sessionId) {
+      // Resolve session ID to filesystem path, scoped to current project
+      const currentProject = await SessionManager.list(ctrl.runtime.cwd, sessionDir);
+      const match = currentProject.find(s => s.id === sessionId);
+      if (!match) throw new Error(`Session not found: ${sessionId}`);
+      const result = await ctrl.runtime.switchSession(match.path);
       if (!result?.cancelled) {
         await ctrl.bindSession();
         await ctrl.sendBootstrap();
       }
       return result;
     }
-    const [currentProject, allProjects] = await Promise.all([
-      SessionManager.list(ctrl.runtime.cwd, sessionDir),
-      SessionManager.listAll(),
-    ]);
+    const currentProject = await SessionManager.list(ctrl.runtime.cwd, sessionDir);
     return {
       needsPicker: "session",
-      currentSessionFile: ctrl.session.sessionFile || null,
+      currentSessionId: ctrl.session.sessionId || null,
       sessions: {
         currentProject: currentProject.map(serializeSessionInfo),
-        allProjects: allProjects.map(serializeSessionInfo),
       },
     };
   },
@@ -737,9 +737,11 @@ function shouldRefreshMessages(eventType) {
 
 function serializeSessionInfo(info) {
   return {
-    ...info,
+    id: info.id,
+    name: info.name,
     created: info.created instanceof Date ? info.created.toISOString() : info.created,
     modified: info.modified instanceof Date ? info.modified.toISOString() : info.modified,
+    messageCount: info.messageCount,
   };
 }
 
@@ -793,7 +795,6 @@ class NativePiSessionController {
         diagnostics: this.runtime.diagnostics,
         slashCommands: this.collectSlashCommands(),
         basePath: BASE_PATH || undefined,
-        projectCwd: this.cwd,
       },
     });
     // Bootstrap is now driven by the client's `ready` message — they tell us
@@ -1009,7 +1010,6 @@ class NativePiSessionController {
     return {
       cwd: this.runtime.cwd,
       sessionId: session.sessionId,
-      sessionFile: session.sessionFile,
       sessionName: session.sessionName,
       thinkingLevel: session.thinkingLevel,
       isStreaming: session.isStreaming,
@@ -1132,28 +1132,26 @@ class NativePiSessionController {
   // Handle the client's resume request. If we can replay missed events,
   // do so without disturbing UI state. Otherwise fall back to a reset +
   // fresh bootstrap.
-  async handleReady(lastSeq, sessionFile) {
-    if (sessionFile && sessionFile !== (this.session.sessionFile || null)) {
-      // Validate that the session belongs to the current project CWD to
-      // prevent cross-project session leakage via localStorage.
-      const cwdSlug = `--${this.cwd.replace(/^[/\\]/, "").replace(/[/\\:]/g, "-")}--`;
-      if (!sessionFile.includes(cwdSlug)) {
-        logger.warn("ignoring sessionFile from different project CWD", {
-          sessionFile,
-          appCwd: this.cwd,
-          expectedSlug: cwdSlug,
-        });
-      } else {
-        try {
-          logger.info("client requested session", { sessionFile });
-          const switched = await this.runtime.switchSession(sessionFile);
+  async handleReady(lastSeq, sessionId) {
+    if (sessionId && sessionId !== this.sessionId) {
+      // Resolve session ID to filesystem path, scoped to current project.
+      // This prevents cross-project session leakage via URL hash or
+      // localStorage manipulation.
+      try {
+        const currentProject = await SessionManager.list(this.runtime.cwd, sessionDir);
+        const match = currentProject.find(s => s.id === sessionId);
+        if (match) {
+          logger.info("client requested session", { sessionId, path: match.path });
+          const switched = await this.runtime.switchSession(match.path);
           if (!switched?.cancelled) await this.bindSession();
-        } catch (error) {
-          logger.warn("client requested session unavailable", {
-            sessionFile,
-            error: error instanceof Error ? error.message : String(error),
-          });
+        } else {
+          logger.warn("client requested session not in current project", { sessionId });
         }
+      } catch (error) {
+        logger.warn("client requested session unavailable", {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     const result = this.eventLog.eventsAfter(lastSeq);
@@ -1214,8 +1212,8 @@ class NativePiSessionController {
       case "ready":
       case "connect": { // accept both for compatibility
         const lastSeq = typeof payload.lastSeq === "number" ? payload.lastSeq : null;
-        const sessionFile = typeof payload.sessionFile === "string" && payload.sessionFile ? payload.sessionFile : null;
-        await this.handleReady(lastSeq, sessionFile);
+        const sessionId = typeof payload.sessionId === "string" && payload.sessionId ? payload.sessionId : null;
+        await this.handleReady(lastSeq, sessionId);
         return;
       }
       case "refresh":
@@ -1283,12 +1281,15 @@ class NativePiSessionController {
 
       case "switch_session":
         await this.runCommand("switch_session", async () => {
-          const sessionPath = String(payload.sessionPath || "").trim();
-          if (!sessionPath) {
-            throw new Error("sessionPath is required");
+          const sessionId = String(payload.sessionId || "").trim();
+          if (!sessionId) {
+            throw new Error("sessionId is required");
           }
-          logger.info("switch session", { sessionPath });
-          const result = await this.runtime.switchSession(sessionPath);
+          const currentProject = await SessionManager.list(this.runtime.cwd, sessionDir);
+          const match = currentProject.find(s => s.id === sessionId);
+          if (!match) throw new Error(`Session not found: ${sessionId}`);
+          logger.info("switch session", { sessionId, path: match.path });
+          const result = await this.runtime.switchSession(match.path);
           if (!result.cancelled) {
             await this.bindSession();
             await this.sendBootstrap();
@@ -1319,11 +1320,14 @@ class NativePiSessionController {
 
       case "delete_session":
         await this.runCommand("delete_session", async () => {
-          const sessionPath = String(payload.sessionPath || "").trim();
-          if (!sessionPath) {
-            throw new Error("sessionPath is required");
+          const sessionId = String(payload.sessionId || "").trim();
+          if (!sessionId) {
+            throw new Error("sessionId is required");
           }
-          const resolved = resolve(expandTilde(sessionPath));
+          const currentProject = await SessionManager.list(this.runtime.cwd, sessionDir);
+          const match = currentProject.find(s => s.id === sessionId);
+          if (!match) throw new Error(`Session not found: ${sessionId}`);
+          const resolved = match.path;
           if (!existsSync(resolved)) {
             await this.sendSessions();
             return { deleted: true, alreadyGone: true };
@@ -1451,13 +1455,13 @@ class NativePiSessionController {
    * created by a previous WebSocket). Replays missed events and sends the
    * connected/bootstrap messages.
    */
-  async attachToSlot(slot, sessionFile, lastSeq) {
+  async attachToSlot(slot, sessionId, lastSeq) {
     this.runtime = slot.runtime;
-    this.sessionFile = sessionFile;
     slot.connections.add(this.ws);
 
     const session = this.runtime.session;
-    this.sessionId = session?.sessionId || null;
+    if (session?.sessionFile) this.sessionFile = session.sessionFile;
+    if (session?.sessionId) this.sessionId = session.sessionId;
 
     // Send connected event BEFORE subscribing so session events don't
     // interleave with the bootstrap messages below.
@@ -1470,7 +1474,6 @@ class NativePiSessionController {
         diagnostics: this.runtime.diagnostics || [],
         slashCommands: this.collectSlashCommands(),
         basePath: BASE_PATH || undefined,
-        projectCwd: this.cwd,
       },
     });
 
@@ -1577,16 +1580,18 @@ wss.on("connection", (ws, req) => {
     }
 
     if (data.type === "ready" || data.type === "connect") {
-      const sessionFile = typeof data.sessionFile === "string" && data.sessionFile ? data.sessionFile : null;
+      const sessionId = typeof data.sessionId === "string" && data.sessionId ? data.sessionId : null;
 
-      if (sessionFile) {
-        // Check registry for an existing runtime bound to this session file
-        const slot = connectionRegistry.getByFile(sessionFile);
+      if (sessionId) {
+        // Check registry for an existing runtime by session ID.
+        // The runtime is already scoped to the current project CWD, so this
+        // is safe against cross-project session leakage.
+        const slot = connectionRegistry.get(sessionId);
         if (slot) {
-          logger.info("reusing existing runtime for session", { sessionFile });
+          logger.info("reusing existing runtime for session", { sessionId });
           // skipInit=true prevents creating a wasteful new runtime
           controller = new NativePiSessionController(ws, connectionRegistry, { skipInit: true });
-          controller.attachToSlot(slot, sessionFile, data.lastSeq);
+          controller.attachToSlot(slot, sessionId, data.lastSeq);
           settled = true;
           flushPending();
           return;

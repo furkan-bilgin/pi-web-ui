@@ -3,7 +3,6 @@
 export interface SessionState {
   cwd: string;
   sessionId: string;
-  sessionFile: string | null;
   sessionName: string | null;
   thinkingLevel: string;
   isStreaming: boolean;
@@ -34,10 +33,7 @@ export interface ModelInfo {
 
 export interface SessionInfo {
   id: string;
-  path: string;
   name?: string;
-  firstMessage?: string;
-  cwd?: string;
   created: string;
   modified: string;
   messageCount?: number;

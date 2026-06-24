@@ -96,12 +96,12 @@ export async function handleSlashResult(data: SlashResult): Promise<void> {
     showPickerModal(
       "Switch Session",
       (data.sessions.currentProject || []).map((s: SessionInfo) => ({
-        id: s.path,
-        label: s.name || s.firstMessage || s.id.split("-").pop() || s.id,
-        description: `${s.cwd ? s.cwd.split("/").pop() : ""} ${s.messageCount ? `${s.messageCount} msgs` : ""}`.trim(),
+        id: s.id,
+        label: s.name || s.id.slice(-12),
+        description: s.messageCount ? `${s.messageCount} msgs` : "",
       })),
-      (path: string) => {
-        send({ type: "slash_command", name: "resume", arg: path });
+      (sessionId: string) => {
+        send({ type: "slash_command", name: "resume", arg: sessionId });
         // Optimistic UI: clear chat and show loading
         useChatStore.getState().resetHistory([]);
       }

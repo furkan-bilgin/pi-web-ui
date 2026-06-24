@@ -27,7 +27,7 @@ export class ConnectionManager {
   private delay = BASE_DELAY;
   private _status: ConnectionStatus = "disconnected";
   private _lastSeq: number | null = null;
-  private sessionFile: string | null = null;
+  private sessionId: string | null = null;
   private intentionalClose = false;
   private onStatusChange: ((status: ConnectionStatus) => void) | null = null;
 
@@ -62,9 +62,9 @@ export class ConnectionManager {
     this.onStatusChange?.(status);
   }
 
-  connect(sessionFile?: string | null): void {
+  connect(sessionId?: string | null): void {
     this.intentionalClose = false;
-    this.sessionFile = sessionFile ?? this.sessionFile;
+    this.sessionId = sessionId ?? this.sessionId;
     this.setStatus("connecting");
 
     try {
@@ -78,17 +78,18 @@ export class ConnectionManager {
     this.socket.addEventListener("open", () => {
       console.info("[ws] connected", {
         lastSeq: this._lastSeq,
-        sessionFile: this.sessionFile,
+        sessionId: this.sessionId,
       });
       this.delay = BASE_DELAY;
       this.setStatus("connected");
       this.startPing();
 
-      // Send ready handshake
+      // Send ready handshake with session ID (UUID) — no filesystem paths
+      // are transmitted to the server, preventing hash manipulation exploits.
       this.send({
         type: "ready",
         lastSeq: this._lastSeq,
-        sessionFile: this.sessionFile,
+        sessionId: this.sessionId,
       });
     });
 
@@ -142,8 +143,8 @@ export class ConnectionManager {
     }
   }
 
-  updateSessionFile(file: string | null): void {
-    this.sessionFile = file;
+  updateSessionId(id: string | null): void {
+    this.sessionId = id;
   }
 
   /** Call from the dispatch layer when we receive a session_event with a seq. */

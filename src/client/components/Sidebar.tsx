@@ -7,8 +7,8 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onNewSession: () => void;
-  onSwitchSession: (path: string) => void;
-  onDeleteSession: (path: string, name: string) => void;
+  onSwitchSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -35,8 +35,7 @@ function SessionRow({
   onSelect: () => void;
   onDelete: () => void;
 }) {
-  const title =
-    session.name || session.firstMessage || `${session.id.slice(0, 8)}\u2026`;
+  const title = session.name || session.id.slice(-12);
   const time = formatRelativeTime(session.modified);
   const msgs = session.messageCount ?? 0;
 
@@ -79,15 +78,14 @@ export function Sidebar({
 }: SidebarProps) {
   const [search, setSearch] = useState("");
   const sessions = useSessionStore((s) => s.sessions);
-  const sessionFile = useSessionStore((s) => s.sessionState?.sessionFile ?? null);
+  const sessionId = useSessionStore((s) => s.sessionState?.sessionId ?? null);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return sessions;
     const q = search.trim().toLowerCase();
     return sessions.filter((s) => {
-      const title = (s.name || s.firstMessage || "").toLowerCase();
-      const cwd = (s.cwd || "").toLowerCase();
-      return title.includes(q) || cwd.includes(q);
+      const label = s.name || s.id.slice(-12);
+      return label.toLowerCase().includes(q);
     });
   }, [sessions, search]);
 
@@ -145,16 +143,11 @@ export function Sidebar({
           )}
           {filtered.map((s) => (
             <SessionRow
-              key={s.path}
+              key={s.id}
               session={s}
-              isActive={s.path === sessionFile}
-              onSelect={() => onSwitchSession(s.path)}
-              onDelete={() =>
-                onDeleteSession(
-                  s.path,
-                  s.name || s.firstMessage || s.id
-                )
-              }
+              isActive={s.id === sessionId}
+              onSelect={() => onSwitchSession(s.id)}
+              onDelete={() => onDeleteSession(s.id)}
             />
           ))}
         </div>

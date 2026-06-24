@@ -34,25 +34,27 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
 
     conn.setOnStatusChange(setStatus);
 
-    // Read session file from URL hash
-    const hashSession =
-      location.hash.startsWith("#")
-        ? decodeURIComponent(location.hash.slice(1))
+    // Read session ID from URL hash (#s-{sessionId}) with fallback to
+    // localStorage.  Only the session ID (UUID) is exposed in the URL -
+    // no filesystem paths.
+    const hashSessionId =
+      location.hash.startsWith("#s-")
+        ? decodeURIComponent(location.hash.slice(3))
         : null;
-    const storedSession = (() => {
+    const storedSessionId = (() => {
       try {
-        return localStorage.getItem("pi-web-ui:session-file");
+        return localStorage.getItem("pi-web-ui:session-id");
       } catch {
         return null;
       }
     })();
-    const resumeFile = hashSession || storedSession || null;
+    const resumeSessionId = hashSessionId || storedSessionId || null;
 
     conn.setHandler((packet) => {
       handlerRef.current?.(packet);
     });
 
-    conn.connect(resumeFile);
+    conn.connect(resumeSessionId);
 
     return () => {
       conn.disconnect();
